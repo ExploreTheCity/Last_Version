@@ -2,11 +2,15 @@ from flask import Flask, flash, render_template, request, redirect, session, url
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime  # Add this import
+from datetime import datetime  
 import secrets
+import requests
+
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret-key-goes-here'
+key = "d936c54fa85a929c1fb472e8361f657d"
+
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///travel.db'
 db = SQLAlchemy()
@@ -108,15 +112,19 @@ def city_detail(city_id):
 
     if request.method == 'POST':
         if not current_user.is_authenticated:
-            flash('You need to be logged in to post a comment.')
+            flash('You need to be logged in to post a comment.', 'error')
             return redirect(url_for('login'))
 
         comment_text = request.form.get('comment_text')
-        if comment_text:
-            new_comment = Comment(user_id=current_user.id, city_id=city_id, text=comment_text)
-            db.session.add(new_comment)
-            db.session.commit()
-            # flash('Comment posted successfully.')
+        if not comment_text:
+            flash('Comment cannot be empty.', 'error')
+            return redirect(url_for('city_detail', city_id=city_id))
+
+        new_comment = Comment(user_id=current_user.id, city_id=city_id, text=comment_text)
+        db.session.add(new_comment)
+        db.session.commit()
+        flash('Comment posted successfully.', 'success')
+        return redirect(url_for('city_detail', city_id=city_id))
 
     return render_template('city_detail.html', city=city, comments=comments)
 

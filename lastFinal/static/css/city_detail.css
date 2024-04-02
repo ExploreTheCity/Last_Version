@@ -1,0 +1,29 @@
+#cityImage {
+    max-width: 175%;
+    height: 500px;
+    border-radius: 15px; 
+    margin-left: 35%;
+}
+#Comments {
+    border: 1px solid #ddd; /* Add a border around the comments section */
+    height: 300px; /* Set a fixed height for the comments section */
+    overflow-y: scroll; /* Add a vertical scrollbar to the comments section */
+}
+
+/* Add padding to the comments container */
+.scrollspy-example {
+    padding: 10px;
+}
+.navbar-nav a.nav-link {
+color: gray !important;
+}
+
+
+.navbar-brand {
+color: gray !important;
+}
+
+.footer {
+margin-top: 20px;
+padding-top: 20px;
+}
