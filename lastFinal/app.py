@@ -2,19 +2,18 @@ from flask import Flask, flash, render_template, request, redirect, session, url
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime  
+from datetime import datetime
 import secrets
 import requests
-
+from flask_migrate import Migrate
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret-key-goes-here'
-key = "d936c54fa85a929c1fb472e8361f657d"
-
+key = "45d0bb895d81e683a2ba339d2efcef82"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///travel.db'
-db = SQLAlchemy()
-db.init_app(app)
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -38,8 +37,10 @@ class City(db.Model):
     restaurants = db.Column(db.Text)
     bars = db.Column(db.Text)
     image_url = db.Column(db.String(255))
+    latitude = db.Column(db.Float)  # Latitude sütunu eklendi
+    longitude = db.Column(db.Float)  # Longitude sütunu eklendi
 
-    def __init__(self, city_name, city_description, cultural_places, tourist_attractions, restaurants, bars, image_url):
+    def __init__(self, city_name, city_description, cultural_places, tourist_attractions, restaurants, bars, image_url, latitude, longitude):
         self.city_name = city_name
         self.city_description = city_description
         self.cultural_places = cultural_places
@@ -47,30 +48,48 @@ class City(db.Model):
         self.restaurants = restaurants
         self.bars = bars
         self.image_url = image_url
+        self.latitude = latitude
+        self.longitude = longitude
 
-with app.app_context():
-    db.create_all()
+@app.route('/update_database')
+def update_database():
+    with app.app_context():
+        db.create_all()
 
-    existing_cities = City.query.all()
-    for city in existing_cities:
-        db.session.delete(city)
+        # Mevcut şehir verilerini temizle
+        existing_cities = City.query.all()
+        for city in existing_cities:
+            db.session.delete(city)
 
-    cities_data = [
-        ('Izmir', 'A beautiful city on the Aegean coast with a rich history.', 'Ephesus, Agora', 'Clock Tower, Konak Pier', 'Best Restaurant1, Best Restaurant 2', 'Bar 1, Bar 2', 'https://gezginyazar.com/wp-content/uploads/2023/05/izmir.jpg'),
-        ('Antalya', 'A popular resort destination with stunning best beaches of the world.', 'Aspendos, Perge', 'Old Town, Düden Waterfalls', 'Seafood Paradise Mediterranean Delight', 'Beach Bar, Rooftop Lounge', 'https://images.pexels.com/photos/3732500/pexels-photo-3732500.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'),
-        ('Istanbul', 'The apple of the worlds eye, where Europe and Asia meet', 'Hagia Sophia, Yere Batan Sarnıcı, Topkapı Palace, Maidens Tower, Hagia Yorgi Monastery', 'Hagia Yorgi Monastery', 'Best Restaurant1, Best Restaurant 2', 'Bar 1, Bar 2', 'https://images.pexels.com/photos/1549326/pexels-photo-1549326.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'),
-        ('Mugla', 'A historical city where blue and green meet.', '', '', 'Best Restaurant1, Best Restaurant 2', 'Bar 1, Bar 2', 'https://images.pexels.com/photos/5892261/pexels-photo-5892261.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'),
-        ('Sinop', 'The northernmost tip of the country. Some say the North Pole can be seen from here.', '', '', 'Best Restaurant1, Best Restaurant 2', 'Bar 1, Bar 2', 'https://images.pexels.com/photos/8391276/pexels-photo-8391276.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'),
-        ('Ankara', 'The city where our founding fathers tomb is located.', '', '', 'Best Restaurant1, Best Restaurant 2', 'Bar 1, Bar 2', 'https://images.pexels.com/photos/7860240/pexels-photo-7860240.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'),
-        ('Canakkale', 'Here still carries the traces of the epic resistance today.', 'Çanakkale Abideleri', '', 'Best Restaurant1, Best Restaurant 2', 'Bar 1, Bar 2', 'https://media.istockphoto.com/id/479392144/tr/foto%C4%9Fraf/canakkale-martyrs-memorial-turkey.jpg?s=612x612&w=0&k=20&c=4Wr6HYnhA43_dSjTeAjImqTSn3vo95EaBtC9RcuvNhE=')
+    # Hava durumu API'sine istek göndererek şehir adlarını al
+    cities_to_fetch = ['Izmir', 'Antalya', 'Istanbul', 'Mugla', 'Sinop', 'Ankara', 'Canakkale']
+    cities_data = []
+    for city_name in cities_to_fetch:
+        response = requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={key}&units=metric")
+        if response.status_code == 200:
+            city_data = response.json()
+            latitude = city_data['coord']['lat']
+            longitude = city_data['coord']['lon']
+            cities_data.append((
+                city_name,
+                f"A beautiful city with a rich history and attractions.",
+                "Attraction 1, Attraction 2",
+                "Restaurant 1, Restaurant 2",
+                "Bar 1, Bar 2",
+                f"https://your_image_url_for_{city_name}.jpg",
+                latitude,
+                longitude
+            ))
+        else:
+            print(f"Failed to fetch data for {city_name}. Status code: {response.status_code}")
 
-    ]
-
+    # Şehir verilerini veritabanına ekle
     for city_data in cities_data:
         city = City(*city_data)
         db.session.add(city)
-
     db.session.commit()
+
+    return "Veritabanı başarıyla güncellendi."
 
 class Comment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -82,12 +101,6 @@ class Comment(db.Model):
     user = db.relationship('User', backref=db.backref('comments', lazy=True))
     city = db.relationship('City', backref=db.backref('comments', lazy=True))
     username = db.relationship('User', foreign_keys=[user_id], backref=db.backref('comments_username', lazy=True))
-
-with app.app_context():
-    db.create_all()
-
-secret_key = secrets.token_hex(24)
-app.secret_key = secret_key
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -104,11 +117,20 @@ def index():
 
     print("Number of cities:", len(cities))
     return render_template('index.html', cities=cities, images=images)
-
 @app.route('/city_detail/<int:city_id>', methods=['GET', 'POST'])
 def city_detail(city_id):
     city = City.query.get_or_404(city_id)
     comments = Comment.query.filter_by(city_id=city_id).all()
+
+    # Hava durumu bilgilerini almak için bir işlem yapalım
+    response = requests.get(f"https://api.openweathermap.org/data/2.5/weather?lat={city.latitude}&lon={city.longitude}&appid={key}&units=metric")
+    if response.status_code == 200:
+        weather_data = response.json()
+        weather_description = weather_data['weather'][0]['description']
+        temperature = weather_data['main']['temp']
+    else:
+        weather_description = "Hava durumu bilgisi alınamadı."
+        temperature = "Bilinmiyor"
 
     if request.method == 'POST':
         if not current_user.is_authenticated:
@@ -126,7 +148,8 @@ def city_detail(city_id):
         flash('Comment posted successfully.', 'success')
         return redirect(url_for('city_detail', city_id=city_id))
 
-    return render_template('city_detail.html', city=city, comments=comments)
+    return render_template('city_detail.html', city=city, comments=comments, weather_description=weather_description, temperature=temperature)
+
 
 @app.route('/login', methods=["GET", "POST"])
 def login():
@@ -195,4 +218,4 @@ def contact():
     return render_template("contact.html")
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5003)
